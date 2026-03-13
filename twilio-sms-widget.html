@@ -1,0 +1,257 @@
+ <!DOCTYPE html>
+  <html>
+  <head>
+      <title>Twilio SMS/WhatsApp Widget</title>
+      <script src="https://js.zohostatic.com/crm/javascript/zcrmJsLib.js"></script>
+      <style>
+          body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+              padding: 15px;
+              background: #f8f9fa;
+              margin: 0;
+          }
+          .widget-container {
+              background: white;
+              border-radius: 8px;
+              padding: 20px;
+              box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+              text-align: center;
+          }
+          .widget-title {
+              font-size: 16px;
+              font-weight: 600;
+              margin-bottom: 15px;
+              color: #495057;
+          }
+          .lead-info {
+              background: #e9ecef;
+              padding: 10px;
+              border-radius: 6px;
+              margin-bottom: 15px;
+              font-size: 13px;
+          }
+          .send-button {
+              background: #28a745;
+              color: white;
+              padding: 12px 24px;
+              border: none;
+              border-radius: 6px;
+              cursor: pointer;
+              font-size: 14px;
+              font-weight: 500;
+              min-width: 180px;
+          }
+          .send-button:hover { background: #218838; }
+          .send-button:disabled {
+              background: #6c757d;
+              cursor: not-allowed;
+          }
+          .status-message {
+              margin-top: 15px;
+              padding: 10px;
+              border-radius: 4px;
+              font-size: 13px;
+              display: none;
+          }
+          .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+          .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+          .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+      </style>
+  </head>
+  <body>
+      <div class="widget-container">
+          <div class="widget-title">🚀 Twilio Unified Messaging</div>
+          <div id="leadInfo" class="lead-info">Loading lead information...</div>
+          <button id="sendButton" class="send-button" disabled>Preparing...</button>
+          <div id="statusMessage" class="status-message"></div>
+      </div>
+
+      <script>
+          let currentRecord = null;
+
+          // Initialize when Zoho loads the widget
+          ZOHO.embeddedApp.on("PageLoad", function(data) {
+              console.log("Twilio Widget loaded for record:", data.Entity_Id);
+              showMessage("Loading lead data...", "info");
+              loadRecordData(data.Entity_Id);
+          });
+
+          ZOHO.embeddedApp.init();
+
+          function loadRecordData(recordId) {
+              ZOHO.CRM.API.getRecord({
+                  Entity: "Leads",
+                  RecordID: recordId
+              }).then(function(response) {
+                  currentRecord = response.data[0];
+                  console.log("Record loaded:", currentRecord);
+                  displayLeadInfo();
+                  updateButtonState();
+                  hideMessage();
+              }).catch(function(error) {
+                  console.error("Error loading record:", error);
+                  showMessage("Error loading lead data. Please refresh the page.", "error");
+              });
+          }
+
+          function displayLeadInfo() {
+              const leadInfo = document.getElementById('leadInfo');
+              const phoneNumber = currentRecord?.Phone || currentRecord?.Mobile;
+              const leadName = currentRecord?.Full_Name || 'Unknown';
+              const leadSource = currentRecord?.Lead_Source || 'Unknown';
+
+              leadInfo.innerHTML = `
+                  <strong>${leadName}</strong><br>
+                  📞 ${phoneNumber || 'No phone number'}<br>
+                  📍 Source: ${leadSource}
+              `;
+          }
+
+          function updateButtonState() {
+              const button = document.getElementById('sendButton');
+              const phoneNumber = currentRecord?.Phone || currentRecord?.Mobile;
+
+              if (!phoneNumber) {
+                  button.disabled = true;
+                  button.textContent = "❌ No Phone Number";
+                  button.style.background = "#dc3545";
+              } else {
+                  button.disabled = false;
+                  const channel = getChannel(currentRecord.Lead_Source);
+                  button.textContent = `📱 Send ${channel}`;
+                  button.style.background = "#28a745";
+              }
+          }
+
+          function getChannel(leadSource) {
+              // Determine if this should be SMS or WhatsApp based on lead source
+              const whatsappSources = ['WhatsApp', 'WhatsApp Lead', 'WhatsApp - Eleve Health WA'];
+              return whatsappSources.includes(leadSource) ? 'WhatsApp' : 'SMS';
+          }
+
+          function showMessage(text, type) {
+              const messageDiv = document.getElementById('statusMessage');
+              messageDiv.textContent = text;
+              messageDiv.className = `status-message ${type}`;
+              messageDiv.style.display = 'block';
+          }
+
+          function hideMessage() {
+              const messageDiv = document.getElementById('statusMessage');
+              messageDiv.style.display = 'none';
+          }
+
+          document.addEventListener('DOMContentLoaded', function() {
+              document.getElementById('sendButton').addEventListener('click', function() {
+                  if (!currentRecord) {
+                      showMessage("Lead data not loaded yet. Please try again.", "error");
+                      return;
+                  }
+
+                  const leadId = currentRecord.id;
+                  const leadSource = currentRecord.Lead_Source;
+                  const phoneNumber = currentRecord.Phone || currentRecord.Mobile;
+                  const leadName = currentRecord.Full_Name;
+
+                  if (!phoneNumber) {
+                      showMessage("No phone number found for this lead.", "error");
+                      return;
+                  }
+
+                  const channel = getChannel(leadSource);
+
+                  if (confirm(`Send ${channel} message to ${leadName} at ${phoneNumber}?\n\nThis will use your Twilio unified messaging 
+  system.`)) {
+                      this.disabled = true;
+                      this.textContent = "🚀 Sending...";
+                      this.style.background = "#ffc107";
+
+                      sendMessage({
+                          lead_id: leadId,
+                          lead_source: leadSource,
+                          phone: phoneNumber,
+                          name: leadName,
+                          channel: channel,
+                          trigger_type: "manual_widget",
+                          timestamp: new Date().toISOString(),
+                          user_email: "system"
+                      });
+                  }
+              });
+          });
+
+          function sendMessage(data) {
+              // PLACEHOLDER: Replace with your actual Zapier webhook URL
+              const webhookUrl = "WEBHOOK_URL_TO_BE_CONFIGURED";
+
+              console.log("Sending message with data:", data);
+
+              // Simulate API call delay
+              setTimeout(function() {
+                  const button = document.getElementById('sendButton');
+
+                  // Simulate successful send (replace with real webhook call)
+                  if (webhookUrl === "WEBHOOK_URL_TO_BE_CONFIGURED") {
+                      // Show configuration needed message
+                      showMessage(`⚠️ Widget ready! Next step: Configure Zapier webhook URL in the code.`, "info");
+                      button.textContent = "⚙️ Configure Webhook";
+                      button.style.background = "#17a2b8";
+                  } else {
+                      // This will be the real implementation
+                      fetch(webhookUrl, {
+                          method: 'POST',
+                          headers: {
+                              'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify(data)
+                      }).then(function(response) {
+                          if (response.ok) {
+                              showMessage(`✅ ${data.channel} message sent successfully to ${data.name}!`, "success");
+                              logActivity(data);
+                          } else {
+                              showMessage("❌ Error sending message. Please try again.", "error");
+                          }
+                      }).catch(function(error) {
+                          console.log("Webhook error:", error);
+                          showMessage("❌ Network error. Please check your connection.", "error");
+                      });
+                  }
+
+                  // Re-enable and update button
+                  button.disabled = false;
+                  updateButtonState();
+
+              }, 1500);
+          }
+
+          function logActivity(messageData) {
+              // Log the SMS/WhatsApp activity in Zoho CRM Tasks
+              ZOHO.CRM.API.insertRecord({
+                  Entity: "Tasks",
+                  APIData: {
+                      Subject: `${messageData.channel} sent to ${messageData.name}`,
+                      Status: "Completed",
+                      Priority: "Normal",
+                      Description: `${messageData.channel} message sent via Twilio Unified Widget at ${messageData.timestamp}\n\nLead 
+  Source: ${messageData.lead_source}\nPhone: ${messageData.phone}`,
+                      Who_Id: messageData.lead_id
+                  }
+              }).then(function(response) {
+                  console.log("Activity logged in CRM:", response);
+              }).catch(function(error) {
+                  console.log("Error logging activity:", error);
+              });
+          }
+
+          // Auto-hide success messages after 5 seconds
+          setInterval(function() {
+              const messageDiv = document.getElementById('statusMessage');
+              if (messageDiv.classList.contains('success') && messageDiv.style.display === 'block') {
+                  setTimeout(function() {
+                      hideMessage();
+                  }, 3000);
+              }
+          }, 100);
+      </script>
+  </body>
+  </html>
